@@ -10,14 +10,14 @@ The Phase 6 module-release workflow checks that the generated `terraform-docs` s
 ## Requirements
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.7.0, < 2.0.0 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.35.0, < 7.0.0 |
 
 ## Providers
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="provider_aws"></a> [aws](#provider\_aws) | 6.65.0 |
 
 ## Modules
@@ -27,7 +27,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-|------|------|
+| ---- | ---- |
 | [aws_cloudwatch_log_group.flow_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_group) | resource |
 | [aws_default_security_group.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/default_security_group) | resource |
 | [aws_flow_log.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/flow_log) | resource |
@@ -45,7 +45,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
+| ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_availability_zones"></a> [availability\_zones](#input\_availability\_zones) | Stable AZ-keyed private-subnet allocation plan. Each netnum is evaluated against the VPC CIDR allocated by IPAM. | <pre>map(object({<br/>    availability_zone = string<br/>    subnet_newbits    = number<br/>    subnet_netnum     = number<br/>  }))</pre> | n/a | yes |
 | <a name="input_flow_log_kms_key_arn"></a> [flow\_log\_kms\_key\_arn](#input\_flow\_log\_kms\_key\_arn) | Customer-managed KMS key ARN used to encrypt the VPC Flow Logs CloudWatch log group. | `string` | n/a | yes |
 | <a name="input_flow_log_retention_in_days"></a> [flow\_log\_retention\_in\_days](#input\_flow\_log\_retention\_in\_days) | Approved CloudWatch retention period for VPC Flow Logs. | `number` | n/a | yes |
@@ -59,7 +59,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-|------|-------------|
+| ---- | ----------- |
 | <a name="output_flow_log"></a> [flow\_log](#output\_flow\_log) | VPC flow-log ID and encrypted CloudWatch log group ARN. |
 | <a name="output_gateway_endpoint_ids"></a> [gateway\_endpoint\_ids](#output\_gateway\_endpoint\_ids) | Stable endpoint-keyed gateway endpoint IDs. |
 | <a name="output_interface_endpoint_ids"></a> [interface\_endpoint\_ids](#output\_interface\_endpoint\_ids) | Stable endpoint-keyed interface endpoint IDs. |
