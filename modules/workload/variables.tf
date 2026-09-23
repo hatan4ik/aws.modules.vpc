@@ -59,6 +59,44 @@ variable "availability_zones" {
   }
 }
 
+variable "transit_gateway_attachment_subnets" {
+  description = "Optional AZ-keyed dedicated subnet plan for Transit Gateway attachments. Keys must match existing availability_zones keys; application subnets are never used for TGW ENIs."
+  type = map(object({
+    subnet_newbits = number
+    subnet_netnum  = number
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition = alltrue([
+      for subnet in values(var.transit_gateway_attachment_subnets) :
+      subnet.subnet_newbits >= 1 && subnet.subnet_newbits <= 16 && subnet.subnet_netnum >= 0 && floor(subnet.subnet_netnum) == subnet.subnet_netnum
+    ])
+    error_message = "Each Transit Gateway attachment subnet needs subnet_newbits from 1 through 16 and a non-negative whole-number subnet_netnum."
+  }
+}
+
+variable "transit_gateway_routes" {
+  description = "Explicit non-default routes installed in every application private route table towards an approved Transit Gateway. Default internet routes are intentionally excluded."
+  type = map(object({
+    destination_cidr_block = string
+    transit_gateway_id     = string
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition = alltrue([
+      for route in values(var.transit_gateway_routes) :
+      can(cidrhost(route.destination_cidr_block, 0)) &&
+      !contains(["0.0.0.0/0", "::/0"], route.destination_cidr_block) &&
+      can(regex("^tgw-[0-9a-f]+$", route.transit_gateway_id))
+    ])
+    error_message = "Each Transit Gateway route needs a valid non-default CIDR and a Transit Gateway ID."
+  }
+}
+
 variable "interface_endpoints" {
   description = "Stable endpoint-keyed AWS PrivateLink services. Service names are passed explicitly so the module does not infer a Region."
   type = map(object({
@@ -102,13 +140,13 @@ variable "flow_log_kms_key_arn" {
 }
 
 variable "flow_log_retention_in_days" {
-  description = "Approved CloudWatch retention period for VPC Flow Logs."
+  description = "Approved CloudWatch retention period for VPC Flow Logs; the workload baseline retains network evidence for at least one year."
   type        = number
   nullable    = false
 
   validation {
-    condition     = var.flow_log_retention_in_days > 0 && floor(var.flow_log_retention_in_days) == var.flow_log_retention_in_days
-    error_message = "flow_log_retention_in_days must be a positive whole number."
+    condition     = var.flow_log_retention_in_days >= 365 && contains([365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.flow_log_retention_in_days)
+    error_message = "flow_log_retention_in_days must be a supported CloudWatch Logs retention period of at least 365 days."
   }
 }
 

@@ -6,6 +6,13 @@ resource "aws_vpc" "this" {
   enable_network_address_usage_metrics = true
 
   tags = local.common_tags
+
+  lifecycle {
+    precondition {
+      condition     = length(setsubtract(toset(keys(var.transit_gateway_attachment_subnets)), toset(keys(var.availability_zones)))) == 0
+      error_message = "transit_gateway_attachment_subnets keys must be existing availability_zones keys."
+    }
+  }
 }
 
 resource "aws_vpc_encryption_control" "this" {
@@ -55,6 +62,49 @@ resource "aws_route_table_association" "private" {
 
   subnet_id      = aws_subnet.private[each.key].id
   route_table_id = aws_route_table.private[each.key].id
+}
+
+# TGW ENIs belong in a distinct subnet tier. This keeps attachment lifecycle,
+# inspection routing, and app-subnet network policy independently reviewable.
+resource "aws_subnet" "transit_gateway_attachment" {
+  for_each = var.transit_gateway_attachment_subnets
+
+  vpc_id                              = aws_vpc.this.id
+  availability_zone                   = var.availability_zones[each.key].availability_zone
+  cidr_block                          = local.transit_gateway_attachment_subnet_cidrs[each.key]
+  map_public_ip_on_launch             = false
+  private_dns_hostname_type_on_launch = "resource-name"
+
+  tags = merge(local.common_tags, {
+    Name = "${var.name}-${each.key}-transit"
+    Tier = "transit"
+  })
+}
+
+resource "aws_route_table" "transit_gateway_attachment" {
+  for_each = aws_subnet.transit_gateway_attachment
+
+  vpc_id = aws_vpc.this.id
+
+  tags = merge(local.common_tags, {
+    Name = "${var.name}-${each.key}-transit"
+    Tier = "transit"
+  })
+}
+
+resource "aws_route_table_association" "transit_gateway_attachment" {
+  for_each = aws_subnet.transit_gateway_attachment
+
+  subnet_id      = each.value.id
+  route_table_id = aws_route_table.transit_gateway_attachment[each.key].id
+}
+
+resource "aws_route" "private_to_transit_gateway" {
+  for_each = local.transit_gateway_route_entries
+
+  route_table_id         = aws_route_table.private[each.value.route_table_key].id
+  destination_cidr_block = var.transit_gateway_routes[each.value.route_key].destination_cidr_block
+  transit_gateway_id     = var.transit_gateway_routes[each.value.route_key].transit_gateway_id
 }
 
 resource "aws_security_group" "interface_endpoints" {
