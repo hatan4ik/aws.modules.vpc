@@ -36,4 +36,4 @@ jobs:
             if [[ -d "$directory/tests" ]] && compgen -G "$directory/tests/*.tftest.hcl" >/dev/null; then
               terraform -chdir="$directory" test -no-color
             fi
-          done < <(find . -path './.terraform' -prune -o -name versions.tf -print | xargs -n1 dirname | sort)
+          done < <(find . -path '*/.terraform' -prune -o -name versions.tf -print | xargs -n1 dirname | sort)
