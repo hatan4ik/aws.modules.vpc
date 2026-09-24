@@ -93,3 +93,14 @@ variable "tags" {
   default     = {}
   nullable    = false
 }
+
+variable "partition" {
+  description = "AWS partition used in the RAM permission ARN (aws, aws-cn, aws-us-gov). Resolved from the provider when null."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.partition == null ? true : can(regex("^aws(-[a-z]+)*$", var.partition))
+    error_message = "partition must be an AWS partition identifier such as aws, aws-cn, or aws-us-gov."
+  }
+}
