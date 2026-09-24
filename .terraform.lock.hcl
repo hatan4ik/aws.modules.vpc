@@ -27,11 +27,3 @@ provider "registry.terraform.io/hashicorp/aws" {
     "zh:b03ff5efdee310502aaaeb460144dc059bce72a0d8217e6b989099ef8aef9283",
   ]
 }
-
-provider "registry.terraform.io/hashicorp/random" {
-  version     = "3.9.1"
-  constraints = ">= 3.6.0, < 4.0.0"
-  hashes = [
-    "h1:PYbnOqRuGn4c0/Ae1f7yOS/0zvmXNHFJRZjuF4KECnM=",
-  ]
-}
