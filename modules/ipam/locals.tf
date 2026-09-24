@@ -1,6 +1,12 @@
-data "aws_partition" "current" {}
+# The partition is an input; the data source is a fallback so the RAM
+# permission ARN needs no lookup when the caller already knows it.
+data "aws_partition" "current" {
+  count = var.partition == null ? 1 : 0
+}
 
 locals {
+  partition = var.partition != null ? var.partition : data.aws_partition.current[0].partition
+
   common_tags = merge(var.tags, {
     Name      = var.name
     Component = "network-ipam"

@@ -1,26 +1,10 @@
 # An AWS IPAM hierarchy has one home-region administration plane, a
 # non-allocating enterprise pool, and explicit allocatable Regional pools.
 # Workload accounts receive only RAM access to their approved Regional pool.
-resource "terraform_data" "configuration" {
-  input = {
-    home_region       = var.home_region
-    operating_regions = var.operating_regions
-    regional_pools    = var.regional_pools
-  }
-
-  lifecycle {
-    precondition {
-      condition     = contains(var.operating_regions, var.home_region)
-      error_message = "operating_regions must include home_region because IPAM administration and RAM sharing occur there."
-    }
-
-    precondition {
-      condition     = alltrue([for pool in values(var.regional_pools) : contains(var.operating_regions, pool.locale)])
-      error_message = "Every regional_pools locale must be present in operating_regions."
-    }
-  }
-}
-
+#
+# The cross-variable rules are preconditions on the IPAM itself: nothing in
+# this module is created unless the home Region is an operating Region and
+# every pool locale is one too.
 resource "aws_vpc_ipam" "this" {
   description = "Private multi-Region IPAM for ${var.name}"
   tier        = "advanced"
@@ -35,7 +19,17 @@ resource "aws_vpc_ipam" "this" {
 
   tags = local.common_tags
 
-  depends_on = [terraform_data.configuration]
+  lifecycle {
+    precondition {
+      condition     = contains(var.operating_regions, var.home_region)
+      error_message = "operating_regions must include home_region because IPAM administration and RAM sharing occur there."
+    }
+
+    precondition {
+      condition     = alltrue([for pool in values(var.regional_pools) : contains(var.operating_regions, pool.locale)])
+      error_message = "Every regional_pools locale must be present in operating_regions."
+    }
+  }
 }
 
 # The top-level pool is deliberately not localized, so it reserves space and
@@ -96,7 +90,7 @@ resource "aws_ram_resource_share" "regional_pool" {
 
   name                      = "${var.name}-${each.key}-ipam-pool"
   allow_external_principals = false
-  permission_arns           = ["arn:${data.aws_partition.current.partition}:ram::aws:permission/AWSRAMDefaultPermissionsIpamPool"]
+  permission_arns           = ["arn:${local.partition}:ram::aws:permission/AWSRAMDefaultPermissionsIpamPool"]
 
   tags = merge(local.common_tags, {
     Name   = "${var.name}-${each.key}-ipam-pool"
