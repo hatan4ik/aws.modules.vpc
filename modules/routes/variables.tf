@@ -30,8 +30,8 @@ variable "routes" {
   nullable = false
 
   validation {
-    condition     = alltrue([for key in keys(var.routes) : can(regex("^[a-z0-9][a-z0-9-]{0,62}$", key))])
-    error_message = "Route keys must be 1-63 lowercase alphanumeric characters or hyphens."
+    condition     = alltrue([for key in keys(var.routes) : can(regex("^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$", key))])
+    error_message = "Route keys must be 1-63 characters of letters, digits, underscores, dots, or hyphens."
   }
 
   validation {

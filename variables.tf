@@ -169,7 +169,7 @@ variable "internet" {
   default = null
 
   validation {
-    condition     = var.internet == null ? true : alltrue([for gateway in values(var.internet.nat_gateways) : can(regex("^[a-z][a-z0-9-]*/[a-z0-9][a-z0-9-]*$", gateway.subnet))])
+    condition     = var.internet == null ? true : alltrue([for gateway in values(var.internet.nat_gateways) : can(regex("^[a-z][a-z0-9-]*/[a-zA-Z0-9][a-zA-Z0-9_-]*$", gateway.subnet))])
     error_message = "Each nat_gateways entry must name its subnet as <tier>/<az_key>."
   }
 }

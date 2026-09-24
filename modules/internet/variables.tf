@@ -46,8 +46,8 @@ variable "nat_gateways" {
   nullable = false
 
   validation {
-    condition     = alltrue([for key in keys(var.nat_gateways) : can(regex("^[a-z0-9][a-z0-9-]{0,15}$", key))])
-    error_message = "nat_gateways keys must be 1-16 lowercase alphanumeric characters or hyphens."
+    condition     = alltrue([for key in keys(var.nat_gateways) : can(regex("^[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}$", key))])
+    error_message = "nat_gateways keys must be 1-32 characters of letters, digits, underscores, or hyphens."
   }
 
   validation {

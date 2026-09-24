@@ -69,8 +69,8 @@ variable "interface_endpoints" {
   nullable = false
 
   validation {
-    condition     = alltrue([for key in keys(var.interface_endpoints) : can(regex("^[a-z0-9][a-z0-9-]{0,62}$", key))])
-    error_message = "interface_endpoints keys must be 1-63 lowercase alphanumeric characters or hyphens."
+    condition     = alltrue([for key in keys(var.interface_endpoints) : can(regex("^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$", key))])
+    error_message = "interface_endpoints keys must be 1-63 characters of letters, digits, underscores, dots, or hyphens."
   }
 
   validation {
@@ -95,8 +95,8 @@ variable "gateway_endpoints" {
   nullable = false
 
   validation {
-    condition     = alltrue([for key in keys(var.gateway_endpoints) : can(regex("^[a-z0-9][a-z0-9-]{0,62}$", key))])
-    error_message = "gateway_endpoints keys must be 1-63 lowercase alphanumeric characters or hyphens."
+    condition     = alltrue([for key in keys(var.gateway_endpoints) : can(regex("^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$", key))])
+    error_message = "gateway_endpoints keys must be 1-63 characters of letters, digits, underscores, dots, or hyphens."
   }
 
   validation {
