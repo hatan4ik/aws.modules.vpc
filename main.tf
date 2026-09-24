@@ -1,193 +1,93 @@
-data "aws_partition" "current" {}
+# Composition root: one VPC and its tiers, gateways, routes, endpoints, and
+# flow logs. Each submodule is a single-responsibility unit usable on its own.
 
-data "aws_region" "current" {}
+module "subnets" {
+  source   = "./modules/subnets"
+  for_each = var.subnets
 
-data "aws_caller_identity" "current" {}
-
-locals {
-  flow_log_group_name = "/aws/vpc/${var.name}/flow-logs"
-  flow_log_group_arn  = "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:${local.flow_log_group_name}"
-  flow_log_role_name  = "${var.name}-vpc-flow-logs"
-
-  flow_logs_kms_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "AllowAccountRootAdministration"
-        Effect    = "Allow"
-        Action    = "kms:*"
-        Resource  = "*"
-        Principal = { AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root" }
-      },
-      {
-        Sid    = "AllowCloudWatchLogsForThisLogGroup"
-        Effect = "Allow"
-        Action = [
-          "kms:Decrypt",
-          "kms:DescribeKey",
-          "kms:Encrypt",
-          "kms:GenerateDataKey*",
-          "kms:ReEncrypt*",
-        ]
-        Resource  = "*"
-        Principal = { Service = "logs.${data.aws_region.current.region}.amazonaws.com" }
-        Condition = {
-          ArnEquals = {
-            "kms:EncryptionContext:aws:logs:arn" = local.flow_log_group_arn
-          }
-        }
-      },
-    ]
-  })
-
-  flow_logs_assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Action    = "sts:AssumeRole"
-      Principal = { Service = "vpc-flow-logs.amazonaws.com" }
-    }]
-  })
-
-  flow_logs_delivery_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "logs:CreateLogStream",
-        "logs:DescribeLogStreams",
-        "logs:PutLogEvents",
-      ]
-      Resource = "${local.flow_log_group_arn}:*"
-    }]
-  })
+  vpc_id                              = aws_vpc.this.id
+  vpc_cidr_block                      = aws_vpc.this.cidr_block
+  name                                = var.name
+  tier                                = each.key
+  availability_zones                  = each.value.availability_zones
+  route_tables                        = each.value.route_tables
+  map_public_ip_on_launch             = each.value.map_public_ip_on_launch
+  private_dns_hostname_type_on_launch = each.value.private_dns_hostname_type_on_launch
+  tags                                = var.tags
 }
 
-resource "aws_vpc" "this" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_hostnames = true
-  enable_dns_support   = true
+module "internet" {
+  source = "./modules/internet"
+  count  = local.internet_enabled ? 1 : 0
 
-  tags = merge(var.tags, {
-    Name = var.name
-  })
+  vpc_id                              = aws_vpc.this.id
+  name                                = var.name
+  create_internet_gateway             = var.internet.create_internet_gateway
+  create_egress_only_internet_gateway = var.internet.create_egress_only_internet_gateway
+  nat_gateways                        = local.nat_gateways
+  tags                                = var.tags
+}
 
-  lifecycle {
-    precondition {
-      condition     = length(setsubtract(toset(keys(var.private_subnet_cidrs)), toset(keys(var.availability_zones)))) == 0 && length(setsubtract(toset(keys(var.availability_zones)), toset(keys(var.private_subnet_cidrs)))) == 0
-      error_message = "private_subnet_cidrs keys must exactly match availability_zones keys."
+module "routes" {
+  source   = "./modules/routes"
+  for_each = var.subnets
+
+  route_table_ids     = module.subnets[each.key].route_table_ids
+  routes              = local.resolved_routes[each.key]
+  allow_default_route = each.value.allow_default_route
+}
+
+module "endpoints" {
+  source = "./modules/endpoints"
+  count  = local.endpoints_enabled ? 1 : 0
+
+  vpc_id                     = aws_vpc.this.id
+  name                       = var.name
+  vpc_cidr_blocks            = local.vpc_cidr_blocks
+  create_security_group      = var.endpoints.create_security_group
+  security_group_name        = var.endpoints.security_group_name
+  security_group_description = coalesce(var.endpoints.security_group_description, "Permits private HTTPS connections from this VPC to its AWS interface endpoints.")
+  security_group_ids         = var.endpoints.security_group_ids
+  tags                       = var.tags
+
+  interface_endpoints = {
+    for key, endpoint in var.endpoints.interface : key => {
+      service_name                                   = endpoint.service_name
+      subnet_ids                                     = toset(values(module.subnets[endpoint.subnet_tier].subnet_ids))
+      private_dns_enabled                            = endpoint.private_dns_enabled
+      policy_json                                    = endpoint.policy_json
+      ip_address_type                                = endpoint.ip_address_type
+      dns_record_ip_type                             = endpoint.dns_record_ip_type
+      private_dns_only_for_inbound_resolver_endpoint = endpoint.private_dns_only_for_inbound_resolver_endpoint
+    }
+  }
+
+  gateway_endpoints = {
+    for key, endpoint in var.endpoints.gateway : key => {
+      service_name    = endpoint.service_name
+      route_table_ids = toset(flatten([for tier in endpoint.route_table_tiers : values(module.subnets[tier].route_table_ids)]))
+      policy_json     = endpoint.policy_json
     }
   }
 }
 
-# Enforce encryption for traffic traversing the VPC. The initial sandbox has no
-# public egress, NAT gateway, endpoints, or application workload.
-resource "aws_vpc_encryption_control" "this" {
-  vpc_id = aws_vpc.this.id
-  mode   = "enforce"
+module "flow_logs" {
+  source = "./modules/flow-logs"
+  count  = local.flow_logs_enabled ? 1 : 0
 
-  tags = var.tags
-}
-
-# A new VPC begins with permissive default security-group egress. Manage it
-# explicitly as deny-all so workloads must use purpose-specific security groups.
-resource "aws_default_security_group" "deny_all" {
-  vpc_id                 = aws_vpc.this.id
-  revoke_rules_on_delete = true
-  ingress                = []
-  egress                 = []
-
-  tags = merge(var.tags, {
-    Name = "${var.name}-default-deny-all"
-  })
-}
-
-resource "aws_subnet" "private" {
-  for_each = var.private_subnet_cidrs
-
-  vpc_id                  = aws_vpc.this.id
-  cidr_block              = each.value
-  availability_zone       = var.availability_zones[each.key]
-  map_public_ip_on_launch = false
-
-  tags = merge(var.tags, {
-    Name = "${var.name}-private-${each.key}"
-    Tier = "private"
-  })
-}
-
-# Each private subnet has an intentionally empty route table. This leaves the
-# sandbox isolated until a separately reviewed TGW attachment is introduced.
-resource "aws_route_table" "private" {
-  for_each = aws_subnet.private
-
-  vpc_id = aws_vpc.this.id
-
-  tags = merge(var.tags, {
-    Name = "${var.name}-private-${each.key}"
-    Tier = "private"
-  })
-}
-
-resource "aws_route_table_association" "private" {
-  for_each = aws_subnet.private
-
-  subnet_id      = each.value.id
-  route_table_id = aws_route_table.private[each.key].id
-}
-
-resource "aws_kms_key" "flow_logs" {
-  description             = "Encrypts CloudWatch VPC Flow Logs for ${var.name}."
-  deletion_window_in_days = 30
-  enable_key_rotation     = true
-  policy                  = local.flow_logs_kms_policy
-
-  tags = merge(var.tags, {
-    Name      = "${var.name}-flow-logs"
-    DataClass = "network-observability"
-  })
-}
-
-resource "aws_kms_alias" "flow_logs" {
-  name          = "alias/${var.name}-flow-logs"
-  target_key_id = aws_kms_key.flow_logs.key_id
-}
-
-resource "aws_cloudwatch_log_group" "flow_logs" {
-  name              = local.flow_log_group_name
-  retention_in_days = var.flow_log_retention_in_days
-  kms_key_id        = aws_kms_key.flow_logs.arn
-
-  tags = merge(var.tags, {
-    Name = local.flow_log_group_name
-  })
-}
-
-resource "aws_iam_role" "flow_logs" {
-  name               = local.flow_log_role_name
-  description        = "Writes VPC Flow Logs for ${var.name} to CloudWatch Logs."
-  assume_role_policy = local.flow_logs_assume_role_policy
-
-  tags = var.tags
-}
-
-resource "aws_iam_role_policy" "flow_logs_delivery" {
-  name   = "${var.name}-flow-logs-delivery"
-  role   = aws_iam_role.flow_logs.id
-  policy = local.flow_logs_delivery_policy
-}
-
-resource "aws_flow_log" "vpc" {
-  iam_role_arn             = aws_iam_role.flow_logs.arn
-  log_destination          = aws_cloudwatch_log_group.flow_logs.arn
-  log_destination_type     = "cloud-watch-logs"
-  traffic_type             = "ALL"
-  vpc_id                   = aws_vpc.this.id
-  max_aggregation_interval = 60
-
-  depends_on = [aws_iam_role_policy.flow_logs_delivery]
-
-  tags = merge(var.tags, {
-    Name = "${var.name}-all-traffic"
-  })
+  name                            = var.name
+  vpc_id                          = aws_vpc.this.id
+  destination                     = var.flow_logs.destination
+  retention_in_days               = var.flow_logs.retention_in_days
+  traffic_type                    = var.flow_logs.traffic_type
+  max_aggregation_interval        = var.flow_logs.max_aggregation_interval
+  log_format                      = var.flow_logs.log_format
+  role_name                       = var.flow_logs.role_name
+  role_path                       = var.flow_logs.role_path
+  role_permissions_boundary       = var.flow_logs.role_permissions_boundary
+  kms_key_deletion_window_in_days = var.flow_logs.kms_key_deletion_window_in_days
+  partition                       = var.flow_logs.partition
+  region                          = var.flow_logs.region
+  account_id                      = var.flow_logs.account_id
+  tags                            = var.tags
 }
