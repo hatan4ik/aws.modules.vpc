@@ -9,8 +9,12 @@ variable "delegated_admin_account_id" {
   }
 }
 
+# Neither the RAM organization-sharing flag nor the IPAM delegation record
+# supports tags, so the value has no effect. The input is kept so callers can
+# pass their default tags to every submodule uniformly.
+# tflint-ignore: terraform_unused_declarations
 variable "tags" {
-  description = "Allocation and ownership tags for the Organization-level IPAM delegation record."
+  description = "Accepted for interface uniformity with the other submodules; neither resource of this module supports tags, so the value has no effect."
   type        = map(string)
   default     = {}
   nullable    = false
