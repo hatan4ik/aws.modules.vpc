@@ -1,45 +1,66 @@
 # Interface endpoints share one security group that admits HTTPS from the VPC
 # and nothing else; rules are standalone resources so ownership is unambiguous.
+#
+# The security group and its ingress rule are provisioned by the external
+# aws.modules.security-group module rather than hand-rolled here (see its
+# docs/CONSUMERS.md for the migration this call implements). The
+# vpc_cidr_blocks-must-be-non-empty precondition that used to live on the
+# inline aws_security_group resource has no equivalent in that module (it has
+# no opinion on vpc_cidr_blocks, since that variable does not exist in its
+# interface), so it is re-added below on a standalone terraform_data
+# resource with unconditional count, not on aws_vpc_endpoint.interface: a
+# precondition on a for_each resource never evaluates when that resource has
+# zero instances (no interface_endpoints declared), which would have let
+# this exact misconfiguration through silently. terraform_data.security_group_inputs
+# always exists, so the check fires under every input combination, matching
+# the original inline resource's guarantee exactly.
 
 locals {
   security_group_name = coalesce(var.security_group_name, "${var.name}-interface-endpoints")
+
+  # Keyed by position so an IPAM-allocated CIDR (unknown until apply) still
+  # yields known instance keys, matching the security group module's own
+  # ingress_rules map shape.
+  https_ingress_rules = {
+    for index, cidr in var.vpc_cidr_blocks : tostring(index) => {
+      description = "HTTPS from the VPC"
+      from_port   = 443
+      to_port     = 443
+      cidr_ipv4   = cidr
+    } if var.create_security_group
+  }
+
+  # Branch on the known variable, not module.security_group.id's nullness:
+  # that id is a genuinely unknown computed value under command = plan for a
+  # not-yet-created group, and comparing an unknown value against null does
+  # not evaluate at plan time even though the value can never actually be
+  # null when var.create_security_group is true.
   security_group_ids = concat(
-    var.create_security_group ? [aws_security_group.this[0].id] : [],
+    var.create_security_group ? [module.security_group.id] : [],
     sort(tolist(var.security_group_ids)),
   )
 }
 
-resource "aws_security_group" "this" {
-  # checkov:skip=CKV2_AWS_5: The group is attached to every interface endpoint created below; Checkov's graph does not follow the endpoint's security_group_ids list.
-  count = var.create_security_group ? 1 : 0
+module "security_group" {
+  source = "git::https://github.com/hatan4ik/aws.modules.security-group.git?ref=a2142e9b7351c81735e4dbefdc7c66155dd4c266" # v1.1.0
 
-  name        = local.security_group_name
-  description = var.security_group_description
-  vpc_id      = var.vpc_id
+  create        = var.create_security_group
+  name          = local.security_group_name
+  description   = var.security_group_description
+  vpc_id        = var.vpc_id
+  ingress_rules = local.https_ingress_rules
+  tags          = var.tags
+}
 
-  tags = merge(var.tags, { Name = local.security_group_name })
+resource "terraform_data" "security_group_inputs" {
+  input = { create_security_group = var.create_security_group, vpc_cidr_blocks = var.vpc_cidr_blocks }
 
   lifecycle {
     precondition {
-      condition     = length(var.vpc_cidr_blocks) > 0
+      condition     = var.create_security_group ? length(var.vpc_cidr_blocks) > 0 : true
       error_message = "vpc_cidr_blocks must list at least one CIDR when create_security_group is true."
     }
   }
-}
-
-# Keyed by position so an IPAM-allocated CIDR (unknown until apply) still
-# yields known instance keys.
-resource "aws_vpc_security_group_ingress_rule" "https" {
-  for_each = { for index, cidr in var.vpc_cidr_blocks : tostring(index) => cidr if var.create_security_group }
-
-  security_group_id = aws_security_group.this[0].id
-  description       = "HTTPS from the VPC"
-  ip_protocol       = "tcp"
-  from_port         = 443
-  to_port           = 443
-  cidr_ipv4         = each.value
-
-  tags = merge(var.tags, { Name = "${local.security_group_name}-https-${each.key}" })
 }
 
 resource "aws_vpc_endpoint" "interface" {

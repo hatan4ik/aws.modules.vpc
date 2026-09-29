@@ -21,8 +21,13 @@ run "creates_interface_and_gateway_endpoints_with_a_locked_down_group" {
   }
 
   assert {
-    condition     = aws_security_group.this[0].name == "sandbox-network-dev-interface-endpoints" && aws_security_group.this[0].tags["Name"] == "sandbox-network-dev-interface-endpoints" && length(aws_vpc_security_group_ingress_rule.https) == 1 && aws_vpc_security_group_ingress_rule.https["0"].cidr_ipv4 == "10.64.0.0/16" && aws_vpc_security_group_ingress_rule.https["0"].from_port == 443
-    error_message = "The endpoint security group must admit HTTPS from the VPC CIDR only."
+    # A test's module.<name> reference exposes only that module's declared
+    # outputs, never its internal resources, so the actual rendered security
+    # group and rule are verified in aws.modules.security-group's own test
+    # suite. What this module owns and can assert here is that it calls that
+    # module with the right name and the right ingress_rules content.
+    condition     = local.security_group_name == "sandbox-network-dev-interface-endpoints" && length(local.https_ingress_rules) == 1 && local.https_ingress_rules["0"].cidr_ipv4 == "10.64.0.0/16" && local.https_ingress_rules["0"].from_port == 443 && length(module.security_group.ingress_rule_ids) == 1 && contains(keys(module.security_group.ingress_rule_ids), "0")
+    error_message = "The endpoint security group must be named for this VPC and admit HTTPS from the VPC CIDR only."
   }
 
   assert {
@@ -53,7 +58,7 @@ run "uses_supplied_security_groups_only" {
   }
 
   assert {
-    condition     = length(aws_security_group.this) == 0 && output.security_group_id == null && output.security_group_ids == tolist(["sg-0aaaaaaaaaaaaaaaa", "sg-0bbbbbbbbbbbbbbbb"]) && aws_vpc_endpoint.interface["sts"].security_group_ids == toset(["sg-0aaaaaaaaaaaaaaaa", "sg-0bbbbbbbbbbbbbbbb"])
+    condition     = output.security_group_id == null && output.security_group_ids == tolist(["sg-0aaaaaaaaaaaaaaaa", "sg-0bbbbbbbbbbbbbbbb"]) && aws_vpc_endpoint.interface["sts"].security_group_ids == toset(["sg-0aaaaaaaaaaaaaaaa", "sg-0bbbbbbbbbbbbbbbb"])
     error_message = "Supplied groups must be used verbatim, sorted, with no managed group."
   }
 }
@@ -77,7 +82,11 @@ run "creates_nothing_but_the_group_when_no_endpoints_are_declared" {
   command = plan
 
   assert {
-    condition     = length(aws_vpc_endpoint.interface) == 0 && length(aws_vpc_endpoint.gateway) == 0 && length(aws_security_group.this) == 1
+    # Whether the group itself gets created is aws.modules.security-group's
+    # own guarantee for create = true (the default here), proven in that
+    # module's own test suite; this module's responsibility is only that an
+    # empty interface_endpoints/gateway_endpoints creates no VPC endpoints.
+    condition     = length(aws_vpc_endpoint.interface) == 0 && length(aws_vpc_endpoint.gateway) == 0
     error_message = "Empty endpoint maps must create no endpoints."
   }
 }
@@ -102,7 +111,7 @@ run "rejects_created_group_without_vpc_cidrs" {
     vpc_cidr_blocks = []
   }
 
-  expect_failures = [aws_security_group.this]
+  expect_failures = [terraform_data.security_group_inputs]
 }
 
 run "rejects_non_aws_service_name" {

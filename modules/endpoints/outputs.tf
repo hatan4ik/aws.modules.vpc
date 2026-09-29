@@ -20,7 +20,7 @@ output "gateway_endpoint_prefix_list_ids" {
 
 output "security_group_id" {
   description = "ID of the created interface-endpoint security group, or null."
-  value       = var.create_security_group ? aws_security_group.this[0].id : null
+  value       = module.security_group.id
 }
 
 output "security_group_ids" {
