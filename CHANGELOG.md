@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-29
+
+### Changed
+
+- `modules/endpoints` now provisions its interface-endpoint security group and HTTPS ingress rule through the external `aws.modules.security-group` module instead of hand-rolling them, ending an independent copy of the same primitive also used by `aws.modules.ecs-service` and (from its own next release) `aws.modules.alb`. The security group's real name, description, ingress rule content, and tags are unchanged, so this does not affect any live consumer's resource addresses beyond the group and its ingress rule moving under `module.security_group` (see the `moved` blocks in `aws.modules.security-group`'s `docs/CONSUMERS.md`). The `vpc_cidr_blocks`-must-be-non-empty validation moved from the inline security group to a standalone `terraform_data.security_group_inputs` resource so it keeps firing under every input combination, including when no `interface_endpoints` are declared.
+
 ## [1.0.0] - 2026-09-24
 
 Breaking release. One module call now provisions one VPC of any shape, and `modules/workload` is folded into the root. [docs/UPGRADE-1.0.md](docs/UPGRADE-1.0.md) maps every root and `modules/workload` input and output to its replacement, gives the exact 1.0.0 call for the live sandbox-network root, and provides ready-to-paste `moved` blocks that keep every existing resource.
