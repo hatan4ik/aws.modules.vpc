@@ -1,6 +1,6 @@
 mock_provider "aws" {
   mock_data "aws_partition" {
-    defaults = { partition = "aws" }
+    defaults = { partition = "aws", dns_suffix = "amazonaws.com" }
   }
   mock_data "aws_region" {
     defaults = { region = "us-east-2" }
@@ -68,8 +68,23 @@ run "resolves_partition_region_and_account_from_the_provider_when_not_given" {
   }
 
   assert {
-    condition     = jsondecode(aws_kms_key.this[0].policy).Statement[0].Principal.AWS == "arn:aws:iam::448871779014:root" && output.log_group_arn == "arn:aws:logs:us-east-2:448871779014:log-group:/aws/vpc/sandbox-network-dev/flow-logs"
+    condition     = jsondecode(aws_kms_key.this[0].policy).Statement[0].Principal.AWS == "arn:aws:iam::448871779014:root" && jsondecode(aws_kms_key.this[0].policy).Statement[1].Principal.Service == "logs.us-east-2.amazonaws.com" && output.log_group_arn == "arn:aws:logs:us-east-2:448871779014:log-group:/aws/vpc/sandbox-network-dev/flow-logs"
     error_message = "Missing inputs must fall back to the provider's partition, region, and account."
+  }
+}
+
+run "key_policy_principal_follows_the_partition_dns_suffix" {
+  command = plan
+
+  variables {
+    partition   = "aws-cn"
+    region      = "cn-north-1"
+    destination = { create_kms_key = true }
+  }
+
+  assert {
+    condition     = jsondecode(aws_kms_key.this[0].policy).Statement[1].Principal.Service == "logs.cn-north-1.amazonaws.com.cn" && jsondecode(aws_kms_key.this[0].policy).Statement[0].Principal.AWS == "arn:aws-cn:iam::123456789012:root"
+    error_message = "In aws-cn the CloudWatch Logs principal must use the amazonaws.com.cn suffix."
   }
 }
 
@@ -163,6 +178,41 @@ run "rejects_created_and_supplied_key_together" {
 
   variables {
     destination = { create_kms_key = true, kms_key_arn = "arn:aws:kms:us-east-2:123456789012:key/11111111-1111-1111-1111-111111111111" }
+  }
+
+  expect_failures = [var.destination]
+}
+
+# Regression: before 1.1.0 this input passed every validation and then failed
+# at plan with a raw "Invalid index" on aws_kms_key.this[0], because the key
+# is only created for cloud-watch-logs destinations.
+run "rejects_created_key_with_s3_destination" {
+  command = plan
+
+  variables {
+    destination = { type = "s3", s3_bucket_arn = "arn:aws:s3:::flow-logs-archive", create_kms_key = true }
+  }
+
+  expect_failures = [var.destination]
+}
+
+run "rejects_supplied_key_with_s3_destination" {
+  command = plan
+
+  variables {
+    destination = { type = "s3", s3_bucket_arn = "arn:aws:s3:::flow-logs-archive", kms_key_arn = "arn:aws:kms:us-east-2:123456789012:key/11111111-1111-1111-1111-111111111111" }
+  }
+
+  expect_failures = [var.destination]
+}
+
+# A created key with an existing log group would encrypt nothing yet still
+# bill monthly for the key.
+run "rejects_created_key_with_existing_log_group" {
+  command = plan
+
+  variables {
+    destination = { create_log_group = false, log_group_arn = "arn:aws:logs:us-east-2:123456789012:log-group:/existing/flow-logs", create_kms_key = true }
   }
 
   expect_failures = [var.destination]
