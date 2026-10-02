@@ -21,11 +21,29 @@ locals {
 
   cloudwatch = var.destination.type == "cloud-watch-logs"
 
+  # Variable validation already rejects create_kms_key outside a created
+  # CloudWatch log group; gating on all three here as well keeps every index
+  # into aws_kms_key.this/aws_kms_alias.this in step with their count.
+  create_kms_key = local.cloudwatch && var.destination.create_log_group && var.destination.create_kms_key
+
+  # Regional service principals use the partition's DNS suffix
+  # (logs.cn-north-1.amazonaws.com.cn in aws-cn). With partition given as an
+  # input the suffix is looked up; otherwise the provider reports it.
+  partition_dns_suffixes = {
+    aws-cn    = "amazonaws.com.cn"
+    aws-eusc  = "amazonaws.eu"
+    aws-iso   = "c2s.ic.gov"
+    aws-iso-b = "sc2s.sgov.gov"
+    aws-iso-e = "cloud.adc-e.uk"
+    aws-iso-f = "csp.hci.ic.gov"
+  }
+  dns_suffix = var.partition != null ? lookup(local.partition_dns_suffixes, var.partition, "amazonaws.com") : data.aws_partition.current[0].dns_suffix
+
   log_group_name = coalesce(var.destination.log_group_name, "/aws/vpc/${var.name}/flow-logs")
   log_group_arn  = var.destination.create_log_group ? "arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:${local.log_group_name}" : var.destination.log_group_arn
   role_name      = coalesce(var.role_name, "${var.name}-vpc-flow-logs")
 
-  kms_key_arn = var.destination.create_kms_key ? aws_kms_key.this[0].arn : var.destination.kms_key_arn
+  kms_key_arn = local.create_kms_key ? aws_kms_key.this[0].arn : var.destination.kms_key_arn
 
   kms_key_policy = jsonencode({
     Version = "2012-10-17"
@@ -48,7 +66,7 @@ locals {
           "kms:ReEncrypt*",
         ]
         Resource  = "*"
-        Principal = { Service = "logs.${local.region}.amazonaws.com" }
+        Principal = { Service = "logs.${local.region}.${local.dns_suffix}" }
         Condition = {
           ArnEquals = {
             "kms:EncryptionContext:aws:logs:arn" = local.log_group_arn
@@ -82,7 +100,7 @@ locals {
 }
 
 resource "aws_kms_key" "this" {
-  count = local.cloudwatch && var.destination.create_kms_key ? 1 : 0
+  count = local.create_kms_key ? 1 : 0
 
   description             = "Encrypts CloudWatch VPC Flow Logs for ${var.name}."
   deletion_window_in_days = var.kms_key_deletion_window_in_days
@@ -96,7 +114,7 @@ resource "aws_kms_key" "this" {
 }
 
 resource "aws_kms_alias" "this" {
-  count = local.cloudwatch && var.destination.create_kms_key ? 1 : 0
+  count = local.create_kms_key ? 1 : 0
 
   name          = "alias/${var.name}-flow-logs"
   target_key_id = aws_kms_key.this[0].key_id

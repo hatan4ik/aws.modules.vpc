@@ -28,3 +28,10 @@ check "internet_path_declared" {
     error_message = "This VPC declares an internet gateway or NAT gateways. Confirm the network design allows an internet path for these tiers."
   }
 }
+
+check "nat_gateway_tier_without_internet_route" {
+  assert {
+    condition     = length(local.nat_tiers_without_igw) == 0
+    error_message = "A public NAT gateway sits in a tier with no 0.0.0.0/0 route through internet_gateway = true (${join(", ", sort(tolist(local.nat_tiers_without_igw)))}). Its subnet's route table cannot reach the internet, so egress through it silently fails. Place NAT gateways in a tier that routes 0.0.0.0/0 to the internet gateway."
+  }
+}

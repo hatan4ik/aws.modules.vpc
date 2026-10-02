@@ -56,6 +56,16 @@ variable "destination" {
   }
 
   validation {
+    condition     = var.destination.type == "cloud-watch-logs" ? true : (!var.destination.create_kms_key && var.destination.kms_key_arn == null)
+    error_message = "destination.create_kms_key and destination.kms_key_arn apply only to cloud-watch-logs destinations; encrypt an s3 destination with the bucket's own default encryption."
+  }
+
+  validation {
+    condition     = !(var.destination.create_kms_key && !var.destination.create_log_group)
+    error_message = "destination.create_kms_key needs create_log_group = true: the created key would encrypt nothing for an existing log group."
+  }
+
+  validation {
     condition     = !(var.destination.create_kms_key && var.destination.kms_key_arn != null)
     error_message = "destination.create_kms_key and destination.kms_key_arn are mutually exclusive."
   }
@@ -150,7 +160,7 @@ variable "kms_key_deletion_window_in_days" {
 }
 
 variable "partition" {
-  description = "AWS partition used in constructed ARNs. Resolved from the provider when null."
+  description = "AWS partition used in constructed ARNs and, through its DNS suffix, the CloudWatch Logs service principal (amazonaws.com.cn in aws-cn). Resolved from the provider when null."
   type        = string
   default     = null
 }

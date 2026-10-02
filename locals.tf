@@ -51,5 +51,13 @@ locals {
     flatten([for endpoint in values(var.endpoints.gateway) : tolist(endpoint.route_table_tiers)]),
   ) : []
 
+  # Tiers with an IPv4 default route through the internet gateway this module
+  # creates, and the tiers holding public NAT gateways. A public NAT gateway
+  # forwards through its own subnet's route table, so it only reaches the
+  # internet from a tier in the first list.
+  internet_routed_tiers = [for tier, spec in var.subnets : tier if anytrue([for route in values(spec.routes) : route.internet_gateway && route.destination_cidr_block == "0.0.0.0/0"])]
+  public_nat_tiers      = local.internet_enabled ? distinct([for gateway in values(var.internet.nat_gateways) : split("/", gateway.subnet)[0] if gateway.connectivity_type == "public"]) : []
+  nat_tiers_without_igw = setsubtract(local.public_nat_tiers, local.internet_routed_tiers)
+
   single_az_tiers = [for tier, spec in var.subnets : tier if length(spec.availability_zones) < 2]
 }

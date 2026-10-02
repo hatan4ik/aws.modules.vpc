@@ -16,6 +16,11 @@
 # the original inline resource's guarantee exactly.
 
 locals {
+  # Only interface endpoints use the group; gateway endpoints are route-table
+  # entries and take no security group. Map keys are known at plan time, so
+  # this is known even when endpoint attributes are not.
+  create_security_group = var.create_security_group != null ? var.create_security_group : length(var.interface_endpoints) > 0
+
   security_group_name = coalesce(var.security_group_name, "${var.name}-interface-endpoints")
 
   # Keyed by position so an IPAM-allocated CIDR (unknown until apply) still
@@ -27,16 +32,16 @@ locals {
       from_port   = 443
       to_port     = 443
       cidr_ipv4   = cidr
-    } if var.create_security_group
+    } if local.create_security_group
   }
 
   # Branch on the known variable, not module.security_group.id's nullness:
   # that id is a genuinely unknown computed value under command = plan for a
   # not-yet-created group, and comparing an unknown value against null does
   # not evaluate at plan time even though the value can never actually be
-  # null when var.create_security_group is true.
+  # null when local.create_security_group is true.
   security_group_ids = concat(
-    var.create_security_group ? [module.security_group.id] : [],
+    local.create_security_group ? [module.security_group.id] : [],
     sort(tolist(var.security_group_ids)),
   )
 }
@@ -44,7 +49,7 @@ locals {
 module "security_group" {
   source = "git::https://github.com/hatan4ik/aws.modules.security-group.git?ref=a2142e9b7351c81735e4dbefdc7c66155dd4c266" # v1.1.0
 
-  create        = var.create_security_group
+  create        = local.create_security_group
   name          = local.security_group_name
   description   = var.security_group_description
   vpc_id        = var.vpc_id
@@ -53,11 +58,11 @@ module "security_group" {
 }
 
 resource "terraform_data" "security_group_inputs" {
-  input = { create_security_group = var.create_security_group, vpc_cidr_blocks = var.vpc_cidr_blocks }
+  input = { create_security_group = local.create_security_group, vpc_cidr_blocks = var.vpc_cidr_blocks }
 
   lifecycle {
     precondition {
-      condition     = var.create_security_group ? length(var.vpc_cidr_blocks) > 0 : true
+      condition     = local.create_security_group ? length(var.vpc_cidr_blocks) > 0 : true
       error_message = "vpc_cidr_blocks must list at least one CIDR when create_security_group is true."
     }
   }
@@ -89,7 +94,7 @@ resource "aws_vpc_endpoint" "interface" {
   lifecycle {
     precondition {
       condition     = length(local.security_group_ids) > 0
-      error_message = "Interface endpoints need at least one security group: keep create_security_group true or supply security_group_ids."
+      error_message = "Interface endpoints need at least one security group: leave create_security_group unset or true, or supply security_group_ids."
     }
   }
 }
@@ -104,4 +109,25 @@ resource "aws_vpc_endpoint" "gateway" {
   policy            = each.value.policy_json
 
   tags = merge(var.tags, { Name = "${var.name}-${each.key}" })
+}
+
+# 1.0.2 moved the group and its ingress rules under module.security_group
+# without these blocks, so a consumer upgrading from 1.0.0 or 1.0.1 got a plan
+# that destroyed the in-use group and created a same-named replacement (which
+# EC2 rejects with InvalidGroup.Duplicate). These moves are relative to this
+# module, so they apply at any depth (module.<vpc>.module.endpoints[0]...) and
+# whether this repository and aws.modules.security-group are local or Git
+# sources. Verified with terraform plan on 1.7.5 and 1.16.3 against state
+# holding the 1.0.1 addresses: the group is moved with no change and each rule
+# is moved with only its Name tag updated in place (<group>-https-<i> becomes
+# <group>-<i>). Keep these blocks: removing them reintroduces the replacement
+# for anyone still upgrading from 1.0.1 or earlier.
+moved {
+  from = aws_security_group.this[0]
+  to   = module.security_group.aws_security_group.this[0]
+}
+
+moved {
+  from = aws_vpc_security_group_ingress_rule.https
+  to   = module.security_group.aws_vpc_security_group_ingress_rule.this
 }

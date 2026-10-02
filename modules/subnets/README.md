@@ -92,7 +92,7 @@ No modules.
 | Name | Description |
 |------|-------------|
 | <a name="output_route_table_ids"></a> [route\_table\_ids](#output\_route\_table\_ids) | Route table IDs keyed by AZ key (per\_az) or by "shared". |
-| <a name="output_subnet_cidr_blocks"></a> [subnet\_cidr\_blocks](#output\_subnet\_cidr\_blocks) | Subnet CIDR blocks keyed by AZ key, known at plan time. |
+| <a name="output_subnet_cidr_blocks"></a> [subnet\_cidr\_blocks](#output\_subnet\_cidr\_blocks) | Subnet CIDR blocks keyed by AZ key (known at plan time for explicit CIDRs; derived newbits/netnum CIDRs are unknown until apply when the VPC CIDR comes from IPAM). |
 | <a name="output_subnet_ids"></a> [subnet\_ids](#output\_subnet\_ids) | Subnet IDs keyed by AZ key. |
 | <a name="output_subnets"></a> [subnets](#output\_subnets) | Subnets keyed by AZ key: id, arn, cidr\_block, availability\_zone, route\_table\_id. |
 | <a name="output_tier"></a> [tier](#output\_tier) | Tier identifier of these subnets. |
