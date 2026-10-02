@@ -105,3 +105,24 @@ resource "aws_vpc_endpoint" "gateway" {
 
   tags = merge(var.tags, { Name = "${var.name}-${each.key}" })
 }
+
+# 1.0.2 moved the group and its ingress rules under module.security_group
+# without these blocks, so a consumer upgrading from 1.0.0 or 1.0.1 got a plan
+# that destroyed the in-use group and created a same-named replacement (which
+# EC2 rejects with InvalidGroup.Duplicate). These moves are relative to this
+# module, so they apply at any depth (module.<vpc>.module.endpoints[0]...) and
+# whether this repository and aws.modules.security-group are local or Git
+# sources. Verified with terraform plan on 1.7.5 and 1.16.3 against state
+# holding the 1.0.1 addresses: the group is moved with no change and each rule
+# is moved with only its Name tag updated in place (<group>-https-<i> becomes
+# <group>-<i>). Keep these blocks: removing them reintroduces the replacement
+# for anyone still upgrading from 1.0.1 or earlier.
+moved {
+  from = aws_security_group.this[0]
+  to   = module.security_group.aws_security_group.this[0]
+}
+
+moved {
+  from = aws_vpc_security_group_ingress_rule.https
+  to   = module.security_group.aws_vpc_security_group_ingress_rule.this
+}
