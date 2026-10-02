@@ -16,7 +16,7 @@ output "regional_pools" {
       arn                    = pool.arn
       locale                 = pool.locale
       cidr                   = aws_vpc_ipam_pool_cidr.regional[key].cidr
-      ram_resource_share_arn = try(aws_ram_resource_share.regional_pool[key].arn, null)
+      ram_resource_share_arn = contains(keys(aws_ram_resource_share.regional_pool), key) ? aws_ram_resource_share.regional_pool[key].arn : null
     }
   }
 }
