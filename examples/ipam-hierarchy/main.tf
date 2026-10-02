@@ -22,7 +22,6 @@ module "ipam_organization_admin" {
   providers = { aws = aws.management }
 
   delegated_admin_account_id = var.network_account_id
-  tags                       = var.tags
 }
 
 # A non-allocating enterprise pool holds the whole private range; VPCs allocate
