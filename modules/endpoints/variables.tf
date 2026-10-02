@@ -28,10 +28,9 @@ variable "vpc_cidr_blocks" {
 }
 
 variable "create_security_group" {
-  description = "Create the interface-endpoint security group (HTTPS from vpc_cidr_blocks, no egress)."
+  description = "Create the interface-endpoint security group (HTTPS from vpc_cidr_blocks, no egress). Null (the default) creates it only when interface_endpoints is non-empty, so a gateway-only configuration creates no unused group."
   type        = bool
-  default     = true
-  nullable    = false
+  default     = null
 }
 
 variable "security_group_name" {
@@ -41,7 +40,7 @@ variable "security_group_name" {
 }
 
 variable "security_group_description" {
-  description = "Description of the created security group. Changing it replaces the group."
+  description = "Description of the created security group. Changing it replaces the group. This default is the single source of the description: the root module passes null through when its caller sets none."
   type        = string
   default     = "Permits private HTTPS connections from this VPC to its AWS interface endpoints."
   nullable    = false
