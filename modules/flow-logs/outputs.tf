@@ -25,7 +25,7 @@ output "kms_key_arn" {
 
 output "kms_key_alias_arn" {
   description = "ARN of the created key alias, else null."
-  value       = var.destination.create_kms_key ? aws_kms_alias.this[0].arn : null
+  value       = local.create_kms_key ? aws_kms_alias.this[0].arn : null
 }
 
 output "role_arn" {

@@ -78,16 +78,59 @@ run "renders_dns_options_when_requested" {
   }
 }
 
-run "creates_nothing_but_the_group_when_no_endpoints_are_declared" {
+run "creates_nothing_when_no_endpoints_are_declared" {
   command = plan
 
   assert {
-    # Whether the group itself gets created is aws.modules.security-group's
-    # own guarantee for create = true (the default here), proven in that
-    # module's own test suite; this module's responsibility is only that an
-    # empty interface_endpoints/gateway_endpoints creates no VPC endpoints.
-    condition     = length(aws_vpc_endpoint.interface) == 0 && length(aws_vpc_endpoint.gateway) == 0
-    error_message = "Empty endpoint maps must create no endpoints."
+    condition     = length(aws_vpc_endpoint.interface) == 0 && length(aws_vpc_endpoint.gateway) == 0 && local.create_security_group == false && output.security_group_id == null && length(output.security_group_ids) == 0
+    error_message = "Empty endpoint maps must create no endpoints and no security group."
+  }
+}
+
+run "gateway_only_creates_no_security_group" {
+  command = plan
+
+  variables {
+    gateway_endpoints = {
+      s3 = { service_name = "com.amazonaws.us-east-2.s3", route_table_ids = ["rtb-0123456789abcdef0"] }
+    }
+  }
+
+  assert {
+    condition     = length(aws_vpc_endpoint.gateway) == 1 && local.create_security_group == false && length(local.https_ingress_rules) == 0 && output.security_group_id == null
+    error_message = "Gateway endpoints take no security group, so a gateway-only configuration must not create one."
+  }
+}
+
+run "explicit_create_security_group_still_creates_the_group_without_interface_endpoints" {
+  command = plan
+
+  variables {
+    create_security_group = true
+    gateway_endpoints = {
+      s3 = { service_name = "com.amazonaws.us-east-2.s3", route_table_ids = ["rtb-0123456789abcdef0"] }
+    }
+  }
+
+  assert {
+    condition     = local.create_security_group == true && length(local.https_ingress_rules) == 1 && length(module.security_group.ingress_rule_ids) == 1
+    error_message = "create_security_group = true must create the group regardless of the endpoint maps."
+  }
+}
+
+run "null_description_selects_the_single_default" {
+  command = plan
+
+  variables {
+    security_group_description = null
+    interface_endpoints = {
+      sts = { service_name = "com.amazonaws.us-east-2.sts", subnet_ids = ["subnet-0123456789abcdef0"] }
+    }
+  }
+
+  assert {
+    condition     = var.security_group_description == "Permits private HTTPS connections from this VPC to its AWS interface endpoints."
+    error_message = "A null description (what the root passes when its caller sets none) must select this module's default."
   }
 }
 
@@ -109,6 +152,9 @@ run "rejects_created_group_without_vpc_cidrs" {
 
   variables {
     vpc_cidr_blocks = []
+    interface_endpoints = {
+      sts = { service_name = "com.amazonaws.us-east-2.sts", subnet_ids = ["subnet-0123456789abcdef0"] }
+    }
   }
 
   expect_failures = [terraform_data.security_group_inputs]

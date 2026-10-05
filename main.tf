@@ -46,7 +46,7 @@ module "endpoints" {
   vpc_cidr_blocks            = local.vpc_cidr_blocks
   create_security_group      = var.endpoints.create_security_group
   security_group_name        = var.endpoints.security_group_name
-  security_group_description = coalesce(var.endpoints.security_group_description, "Permits private HTTPS connections from this VPC to its AWS interface endpoints.")
+  security_group_description = var.endpoints.security_group_description # null selects the submodule's default
   security_group_ids         = var.endpoints.security_group_ids
   tags                       = var.tags
 

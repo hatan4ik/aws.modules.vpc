@@ -88,6 +88,50 @@ run "composes_tiers_gateways_routes_and_endpoints" {
     error_message = "Endpoint and NAT gateway outputs must be keyed by their declared keys."
   }
 
+  assert {
+    condition     = local.internet_routed_tiers == ["public"] && length(local.nat_tiers_without_igw) == 0
+    error_message = "A NAT gateway in a tier that routes 0.0.0.0/0 to the internet gateway must not trip nat_gateway_tier_without_internet_route."
+  }
+
+  expect_failures = [check.internet_path_declared]
+}
+
+run "warns_on_a_public_nat_gateway_in_a_tier_without_an_internet_route" {
+  command = plan
+
+  variables {
+    internet = {
+      nat_gateways = {
+        az1 = { subnet = "private/az1" }
+      }
+    }
+  }
+
+  assert {
+    condition     = local.nat_tiers_without_igw == toset(["private"])
+    error_message = "The tier holding the misplaced NAT gateway must be reported."
+  }
+
+  expect_failures = [check.internet_path_declared, check.nat_gateway_tier_without_internet_route]
+}
+
+run "private_nat_gateway_needs_no_internet_route" {
+  command = plan
+
+  variables {
+    internet = {
+      nat_gateways = {
+        az1 = { subnet = "public/az1" }
+        hub = { subnet = "transit/az1", connectivity_type = "private" }
+      }
+    }
+  }
+
+  assert {
+    condition     = length(local.nat_tiers_without_igw) == 0
+    error_message = "A private NAT gateway does not use the internet gateway and must not trip the check."
+  }
+
   expect_failures = [check.internet_path_declared]
 }
 

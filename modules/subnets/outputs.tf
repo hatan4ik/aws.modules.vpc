@@ -17,7 +17,7 @@ output "subnet_ids" {
 }
 
 output "subnet_cidr_blocks" {
-  description = "Subnet CIDR blocks keyed by AZ key, known at plan time."
+  description = "Subnet CIDR blocks keyed by AZ key (known at plan time for explicit CIDRs; derived newbits/netnum CIDRs are unknown until apply when the VPC CIDR comes from IPAM)."
   value       = local.subnet_cidrs
 }
 

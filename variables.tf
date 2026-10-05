@@ -179,9 +179,9 @@ variable "internet" {
 # ---------------------------------------------------------------------------
 
 variable "endpoints" {
-  description = "VPC endpoints. Interface endpoints are placed in the subnets of subnet_tier; gateway endpoints are associated with the route tables of route_table_tiers. A locked-down HTTPS security group is created unless security_group_ids are supplied."
+  description = "VPC endpoints. Interface endpoints are placed in the subnets of subnet_tier; gateway endpoints are associated with the route tables of route_table_tiers. A locked-down HTTPS security group is created when interface endpoints are declared, unless create_security_group is false (then security_group_ids must be supplied); a gateway-only configuration creates no group. security_group_description defaults to the endpoints submodule's description."
   type = object({
-    create_security_group      = optional(bool, true)
+    create_security_group      = optional(bool)
     security_group_name        = optional(string)
     security_group_description = optional(string)
     security_group_ids         = optional(set(string), [])

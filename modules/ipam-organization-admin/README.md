@@ -34,9 +34,9 @@ module "ipam_organization_admin" {
   delegation call from no other account.
 - An organization has one IPAM delegated administrator. Changing the account
   replaces the record, which AWS performs as a disable followed by an enable.
-- `tags` is accepted so callers can pass their default tags to every
-  submodule uniformly, but neither resource here supports tags, so the value
-  has no effect.
+- `tags` is deprecated and will be removed in 2.0.0. Neither resource here
+  supports tags (the AWS provider schema has no `tags` argument on either), so
+  the value has never had an effect; stop passing it.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
@@ -68,7 +68,7 @@ No modules.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_delegated_admin_account_id"></a> [delegated\_admin\_account\_id](#input\_delegated\_admin\_account\_id) | Network-account ID delegated by the AWS Organizations management account to administer VPC IPAM. | `string` | n/a | yes |
-| <a name="input_tags"></a> [tags](#input\_tags) | Accepted for interface uniformity with the other submodules; neither resource of this module supports tags, so the value has no effect. | `map(string)` | `{}` | no |
+| <a name="input_tags"></a> [tags](#input\_tags) | DEPRECATED (removed in 2.0.0): has no effect. Neither resource of this module supports tags; stop passing this input. | `map(string)` | `{}` | no |
 
 ## Outputs
 

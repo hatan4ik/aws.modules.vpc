@@ -57,7 +57,7 @@ run "rejects_nat_gateway_in_undeclared_subnet" {
   variables {
     internet = { nat_gateways = { az1 = { subnet = "public/az1" } } }
   }
-  expect_failures = [aws_vpc.this, check.internet_path_declared]
+  expect_failures = [aws_vpc.this, check.internet_path_declared, check.nat_gateway_tier_without_internet_route]
 }
 
 run "rejects_route_to_unknown_nat_gateway_key" {
@@ -72,7 +72,7 @@ run "rejects_route_to_unknown_nat_gateway_key" {
       }
     }
   }
-  expect_failures = [aws_vpc.this, check.internet_path_declared]
+  expect_failures = [aws_vpc.this, check.internet_path_declared, check.nat_gateway_tier_without_internet_route]
 }
 
 run "rejects_internet_gateway_route_without_internet" {

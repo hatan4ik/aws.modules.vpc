@@ -36,7 +36,7 @@ resource "aws_nat_gateway" "this" {
 
   subnet_id         = each.value.subnet_id
   connectivity_type = each.value.connectivity_type
-  allocation_id     = each.value.connectivity_type == "public" ? coalesce(each.value.allocation_id, try(aws_eip.nat[each.key].id, null)) : null
+  allocation_id     = contains(keys(local.created_eip_keys), each.key) ? aws_eip.nat[each.key].id : (each.value.connectivity_type == "public" ? each.value.allocation_id : null)
   private_ip        = each.value.private_ip
 
   tags = merge(var.tags, { Name = "${var.name}-nat-${each.key}" })
